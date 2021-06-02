@@ -4,47 +4,130 @@ pragma solidity ^0.8.0;
 
 import "./SuperbToken.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+
+/**
+ * @title InitialCoinOffering
+ * @author Raphael
+ * @notice This contract is deployed with an ERC20 contract in order to set up a sale.
+ *
+ * @dev TODO: add a modulable rate at the deployment
+ * */
 
 contract InitialCoinOffering is Ownable {
+    using Address for address payable;
+
     SuperbToken private _token;
     uint256 private _supplyInSale;
+    uint256 private _supplySold;
     mapping(address => uint256) private _tokenBalances;
-    //uint256 private _startTimeEpoch;
+    uint256 private _startTimeEpoch;
 
-    event TokenBought(address indexed buyer, uint256 amount);
+    event TokenBought(address indexed buyer, uint256 amount, uint256 totalSupplyBought);
+    event TokenClaimed(address indexed buyer, uint256 amount);
+    event SaleStarted(address indexed owner, address indexed icoContract, uint256 supplyInSale);
 
     constructor(address superbTokenAddress, address owner_) Ownable() {
         _token = SuperbToken(superbTokenAddress);
-        _supplyInSale = _token.totalSupply();
         transferOwnership(owner_);
     }
 
-    /*
-    modifier AfterSalePeriod() {
-        require(block.timestamp > _startTimeEpoch + 2 weeks, "InitialCoinOffering: The sale is not over yet.");
+    /**
+     * @notice this is a contract for an unique ICO.
+     * The sale last 2 weeks since the owner call the function startSalePeriod(),
+     * to call this function the owner must have approved the smart contract for to move his fund.
+     *
+     * Tokens and Ether are blocked in the contract during these 2 weeks.
+     *
+     * A buyer cannot buy tokens before the sale has started and after the sale period is over.
+     * Then buyer can withdraw their token at any time after the sale period is over.
+     */
+    modifier isSalePeriod() {
+        require(_startTimeEpoch != 0, "InitialCoinOffering: the sale is not started yet.");
+        if (_startTimeEpoch != 0) {
+            require(block.timestamp < _startTimeEpoch + 2 weeks, "InitialCoinOffering: The sale is over.");
+        }
         _;
     }
-    */
 
-    function startSalePeriod() public onlyOwner {
-        //_startTimeEpoch = block.timestamp;
-        _token.approve(address(this), _supplyInSale);
+    /**
+     * @notice If the token supply is lower than the amount of the value set by the buyers,
+     * this latter is refund and take the remaining supply.
+     *
+     * When this function is called, several state variable is updated :
+     *  - the supply in sale decrease
+     *  - the suplly solded increase
+     *  - the token balance of the buyers increase
+     *
+     * The amount of solded token is transferred from the owner address to the contract address,
+     * this way the owner cannot transfer fund that is already bought in the ICO.
+     * */
+    function buyToken() public payable isSalePeriod {
+        require(_supplyInSale != 0, "InitialCoinOffering: there is no more token in sale.");
+        uint256 refundAmount;
+        if (_supplyInSale < msg.value) {
+            refundAmount = msg.value - _supplyInSale;
+        }
+        _supplyInSale -= msg.value - refundAmount;
+        _tokenBalances[msg.sender] += msg.value - refundAmount;
+        _supplySold += msg.value - refundAmount;
+        _token.transferFrom(owner(), address(this), msg.value - refundAmount);
+        payable(msg.sender).sendValue(refundAmount);
+        emit TokenBought(msg.sender, msg.value - refundAmount, _supplySold);
     }
 
-    function buyToken() public payable {
-        require(msg.value <= _supplyInSale, "InitialCoinOffering: There is no more token to buy.");
-        _supplyInSale -= msg.value;
-        _tokenBalances[msg.sender] += msg.value;
-        _token.approve(msg.sender, msg.value);
-        emit TokenBought(msg.sender, msg.value);
+    /**
+     * @notice This function is callable only by the owner and only if:
+     *     - the owner sell less or equal than the total supply
+     *     - the owner have already allowed the smart contract for spend funds
+     *     - the sale is not already started for the first time
+     *
+     * The owner have to deploy another contract if he wants to achieve a second ICO.
+     * */
+    function startSalePeriod(uint256 supplyInSale_) public onlyOwner {
+        require(
+            supplyInSale_ <= _token.totalSupply(),
+            "InitialCoinOffering: you cannot sell more than the total supply."
+        );
+        require(
+            supplyInSale_ <= _token.allowance(owner(), address(this)),
+            "InitialCoinOffering: you have not allowed the funds yet."
+        );
+        require(_startTimeEpoch == 0, "InitialCoinOffering: the sale is already launched.");
+        _startTimeEpoch = block.timestamp;
+        _supplyInSale = supplyInSale_;
+        emit SaleStarted(owner(), address(this), supplyInSale_);
     }
 
+    /**
+     * @notice This function is callable only if the sale is over.
+     * The contract send tokens via the ERC20 transfer() function,
+     * */
     function claimToken() public {
-        require(_tokenBalances[msg.sender] > 0, "InitialCoinOffering: You have nothing to claim.");
+        require(
+            block.timestamp > _startTimeEpoch + 2 weeks,
+            "InitialCoinOffering: you cannot claim tokens before the sale ends."
+        );
+        require(_tokenBalances[msg.sender] != 0, "InitialCoinOffering: You have nothing to claim.");
         uint256 amount = _tokenBalances[msg.sender];
         _tokenBalances[msg.sender] = 0;
-        //address(this).delegatecall(_token.transferFrom(owner(), msg.sender, amount));
-        //_token.transferFrom(owner(), msg.sender, amount);
+        _token.transfer(msg.sender, amount);
+        emit TokenClaimed(msg.sender, amount);
+    }
+
+    /**
+     * @notice This function is set for the owner in order to withdraw ether generated by the sale,
+     * the owner cannot withdraw ethers before the sale end (may be removed).
+     *
+     * May it needs a Reentrancy Guard ?
+     * */
+    function withdrawSaleProfit() public onlyOwner {
+        require(address(this).balance != 0, "InitialCoinOffering: there is no ether to withdraw in the contract.");
+        require(
+            block.timestamp > _startTimeEpoch + 2 weeks,
+            "InitialCoinOffering: you cannot withdraw ether before the sale ends."
+        );
+        payable(msg.sender).sendValue(address(this).balance);
     }
 
     function tokenContract() public view returns (address) {
@@ -55,7 +138,23 @@ contract InitialCoinOffering is Ownable {
         return _supplyInSale;
     }
 
+    function supplySold() public view returns (uint256) {
+        return _supplySold;
+    }
+
     function tokenBalanceOf(address account) public view returns (uint256) {
         return _tokenBalances[account];
+    }
+
+    function contractBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
+
+    function timeBeforeSaleEnd() public view returns (uint256) {
+        if (_startTimeEpoch == 0) {
+            return 0;
+        } else {
+            return (_startTimeEpoch + 2 weeks) - block.timestamp;
+        }
     }
 }
