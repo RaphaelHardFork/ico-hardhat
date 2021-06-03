@@ -9,39 +9,39 @@ import "@openzeppelin/contracts/utils/Address.sol";
 /**
  * @title InitialCoinOffering
  * @author Raphael
- * @notice This contract is deployed with an ERC20 contract in order to set up a sale.
+ * @notice This contract is deployed with an ERC20 contract in order to set up a sale,
+ * the sale last 2 weeks since the owner call the function startSalePeriod(). The ICO is unique,
+ * the owner cannot set up a new ICO without re deploy the contract.
  *
- * @dev TODO: add a modulable rate at the deployment
+ * Tokens and Ether are blocked in the contract during these 2 weeks.
  * */
-
 contract InitialCoinOffering is Ownable {
     using Address for address payable;
 
     SuperbToken private _token;
     uint256 private _supplyInSale;
     uint256 private _supplySold;
+    uint256 private _rate;
     mapping(address => uint256) private _tokenBalances;
     uint256 private _startTimeEpoch;
 
+    event SaleStarted(address indexed owner, address indexed icoContract, uint256 supplyInSale, uint256 rate);
     event TokenBought(address indexed buyer, uint256 amount, uint256 totalSupplyBought);
     event TokenClaimed(address indexed buyer, uint256 amount);
-    event SaleStarted(address indexed owner, address indexed icoContract, uint256 supplyInSale);
 
+    /**
+     * @notice The constructor set the ERC20 contract address and the owner (Ownable.sol) of the ICO
+     * @param superbTokenAddress is the deployed contract address of the ERC20 token
+     * @param owner_ is the owner of the ICO contract, set via the Ownable contract
+     * */
     constructor(address superbTokenAddress, address owner_) Ownable() {
         _token = SuperbToken(superbTokenAddress);
         transferOwnership(owner_);
     }
 
     /**
-     * @notice this is a contract for an unique ICO.
-     * The sale last 2 weeks since the owner call the function startSalePeriod(),
-     * to call this function the owner must have approved the smart contract for to move his fund.
-     *
-     * Tokens and Ether are blocked in the contract during these 2 weeks.
-     *
-     * A buyer cannot buy tokens before the sale has started and after the sale period is over.
-     * Then buyer can withdraw their token at any time after the sale period is over.
-     */
+     * @notice This modifier is used in the _buyToken() function to prevent a purchase if it is out of the sale period.
+     * */
     modifier isSalePeriod() {
         require(_startTimeEpoch != 0, "InitialCoinOffering: the sale is not started yet.");
         if (_startTimeEpoch != 0) {
@@ -51,40 +51,38 @@ contract InitialCoinOffering is Ownable {
     }
 
     /**
-     * @notice If the token supply is lower than the amount of the value set by the buyers,
-     * this latter is refund and take the remaining supply.
-     *
-     * When this function is called, several state variable is updated :
-     *  - the supply in sale decrease
-     *  - the suplly solded increase
-     *  - the token balance of the buyers increase
-     *
-     * The amount of solded token is transferred from the owner address to the contract address,
-     * this way the owner cannot transfer fund that is already bought in the ICO.
+     * @notice buyers can throw directly on the contract address to buy tokens.
+     * @dev this function call the private _buyToken() function
      * */
-    function buyToken() public payable isSalePeriod {
-        require(_supplyInSale != 0, "InitialCoinOffering: there is no more token in sale.");
-        uint256 refundAmount;
-        if (_supplyInSale < msg.value) {
-            refundAmount = msg.value - _supplyInSale;
-        }
-        _supplyInSale -= msg.value - refundAmount;
-        _tokenBalances[msg.sender] += msg.value - refundAmount;
-        _supplySold += msg.value - refundAmount;
-        _token.transferFrom(owner(), address(this), msg.value - refundAmount);
-        payable(msg.sender).sendValue(refundAmount);
-        emit TokenBought(msg.sender, msg.value - refundAmount, _supplySold);
+    receive() external payable {
+        _buyToken(msg.sender, msg.value);
     }
 
     /**
-     * @notice This function is callable only by the owner and only if:
+     * @notice This payable function is used to buy token via the ICO contract.
+     * As the receive function, it calls the private function _buyToken().
+     * */
+    function buyToken() public payable {
+        _buyToken(msg.sender, msg.value);
+    }
+
+    /**
+     * @notice This function is called to initiate the sale, this function is callable
+     * only by the owner and only if:
      *     - the owner sell less or equal than the total supply
      *     - the owner have already allowed the smart contract for spend funds
      *     - the sale is not already started for the first time
      *
      * The owner have to deploy another contract if he wants to achieve a second ICO.
+     *
+     * @param supplyInSale_ is the amount of the supply the owner wants to sell through the ICO
+     * @param rate_ the number correspond the number of token for 1 ether
+     * [1 => 1 token = 1 ether]
+     * [1 000  => 1000 token = 1 ether]
+     * [1 000  => 1 token = 1 finney]
+     * [456  => 456 token = 1 ether]
      * */
-    function startSalePeriod(uint256 supplyInSale_) public onlyOwner {
+    function startSalePeriod(uint256 supplyInSale_, uint256 rate_) public onlyOwner {
         require(
             supplyInSale_ <= _token.totalSupply(),
             "InitialCoinOffering: you cannot sell more than the total supply."
@@ -96,12 +94,15 @@ contract InitialCoinOffering is Ownable {
         require(_startTimeEpoch == 0, "InitialCoinOffering: the sale is already launched.");
         _startTimeEpoch = block.timestamp;
         _supplyInSale = supplyInSale_;
-        emit SaleStarted(owner(), address(this), supplyInSale_);
+        _rate = rate_;
+        emit SaleStarted(owner(), address(this), supplyInSale_, rate_);
     }
 
     /**
-     * @notice This function is callable only if the sale is over.
-     * The contract send tokens via the ERC20 transfer() function,
+     * @notice This function is called to get tokens once the ICO is over.
+     *
+     * @dev in this function the ICO contract send tokens directly to the buyer,
+     * since tokens where moved to the contract in the buyToken() function.
      * */
     function claimToken() public {
         require(
@@ -130,31 +131,82 @@ contract InitialCoinOffering is Ownable {
         payable(msg.sender).sendValue(address(this).balance);
     }
 
+    /**
+     * @notice this getter is use to verify the ERC20 contract address.
+     * */
     function tokenContract() public view returns (address) {
         return address(_token);
     }
 
+    function rate() public view returns (uint256) {
+        return _rate;
+    }
+
+    /**
+     * @notice this getter display the supply amount available for the sale.
+     * */
     function supplyInSale() public view returns (uint256) {
         return _supplyInSale;
     }
 
+    /**
+     * @notice this getter display the supply solded during the sale (used in the Dapp).
+     * */
     function supplySold() public view returns (uint256) {
         return _supplySold;
     }
 
+    /**
+     * @notice this getter allow buyer to check the amount of token they bought.
+     * */
     function tokenBalanceOf(address account) public view returns (uint256) {
         return _tokenBalances[account];
     }
 
+    /**
+     * @notice this getter is used to know the ether balance of the ICO contract.
+     * */
     function contractBalance() public view returns (uint256) {
         return address(this).balance;
     }
 
+    /**
+     * @notice this getter display time before the sale end, if it returns zero, it means the sale have not started yet.
+     * */
     function timeBeforeSaleEnd() public view returns (uint256) {
         if (_startTimeEpoch == 0) {
             return 0;
         } else {
             return (_startTimeEpoch + 2 weeks) - block.timestamp;
         }
+    }
+
+    /**
+     * @notice This private function is used in the receive() and the buyToken().
+     *
+     * If the token supply is lower than the amount of the value set by the buyers,
+     * this latter is refund and take the remaining supply.
+     *
+     * When this function is called, several state variable is updated :
+     *  - the supply in sale decrease
+     *  - the suplly solded increase
+     *  - the token balance of the buyers increase
+     *
+     * @dev The amount of solded token is transferred from the owner address to the contract address,
+     * this way the owner cannot transfer fund that is already bought in the ICO.
+     * */
+    function _buyToken(address sender, uint256 amount) private isSalePeriod {
+        require(_supplyInSale != 0, "InitialCoinOffering: there is no more token in sale.");
+        uint256 tokenAmount = amount * _rate;
+        uint256 exceedTokenAmount;
+        if (_supplyInSale < tokenAmount) {
+            exceedTokenAmount = tokenAmount - _supplyInSale;
+        }
+        _supplyInSale -= tokenAmount - exceedTokenAmount;
+        _tokenBalances[sender] += tokenAmount - exceedTokenAmount;
+        _supplySold += tokenAmount - exceedTokenAmount;
+        _token.transferFrom(owner(), address(this), tokenAmount - exceedTokenAmount);
+        payable(sender).sendValue(exceedTokenAmount / _rate);
+        emit TokenBought(sender, tokenAmount - exceedTokenAmount, _supplySold);
     }
 }

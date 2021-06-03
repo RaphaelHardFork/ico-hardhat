@@ -2,8 +2,10 @@ const { expect } = require('chai')
 
 describe('InitialCoinOffering', function () {
   let SuperbToken, superbtoken, InitialCoinOffering, initialCoinOffering, dev, owner, buyerA, buyerB
-  let TOTAL_SUPPLY = ethers.utils.parseEther('1001')
-  let ZERO_ADDRESS = ethers.constants.AddressZero
+  const TOTAL_SUPPLY = ethers.utils.parseEther('1000')
+  const ONE_ETHER = ethers.utils.parseEther('1')
+  const RATE = 5
+  const ZERO_ADDRESS = ethers.constants.AddressZero
   beforeEach(async function () {
     ;[dev, owner, buyerA, buyerB] = await ethers.getSigners()
     // ERC20 deployment
@@ -17,6 +19,7 @@ describe('InitialCoinOffering', function () {
     await initialCoinOffering.deployed()
   })
 
+  // DEPLOYMENT
   describe('Deployment', function () {
     it('should use the right address contracts', async function () {
       expect(await initialCoinOffering.tokenContract()).to.equal(superbtoken.address)
@@ -28,140 +31,146 @@ describe('InitialCoinOffering', function () {
   })
 
   // startSalePeriod()
-  describe('Start Sale Period', function () {
+  describe('startSalePeriod() - verification', function () {
     let functionCall
     beforeEach(async function () {
       await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(2))
-      functionCall = await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4))
+      functionCall = await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)
     })
 
     it('should set the supply for the sale', async function () {
       expect(await initialCoinOffering.supplyInSale()).to.equal(TOTAL_SUPPLY.div(4))
     })
 
+    it('should set the rate', async function () {
+      expect(await initialCoinOffering.rate()).to.equal(RATE)
+    })
+
     it('should start the count for the sale duration', async function () {
       expect(await initialCoinOffering.timeBeforeSaleEnd()).to.above(0)
     })
 
-    it('contract allowances for the owner should be approved before the call', async function () {
+    it('check if allowances [contract => owner] is set', async function () {
       expect(await superbtoken.allowance(owner.address, initialCoinOffering.address)).to.equal(TOTAL_SUPPLY.div(2))
     })
 
     it('should emit a SaleStarted event', async function () {
       expect(functionCall)
         .to.emit(initialCoinOffering, 'SaleStarted')
-        .withArgs(owner.address, initialCoinOffering.address, TOTAL_SUPPLY.div(4))
+        .withArgs(owner.address, initialCoinOffering.address, TOTAL_SUPPLY.div(4), RATE)
     })
   })
 
   // startSalePeriod() - misuse
-  describe('Misuse of Start Sale Period', function () {
+  describe('startSalePeriod() - misuse cases', function () {
     it('should revert if the caller is not the owner', async function () {
-      await expect(initialCoinOffering.connect(buyerA).startSalePeriod(TOTAL_SUPPLY.div(4))).to.be.revertedWith(
+      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(2))
+      await expect(initialCoinOffering.connect(buyerA).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)).to.be.revertedWith(
         'Ownable: caller is not the owner'
       )
     })
 
     it('should revert if the owner sell more than the total supply', async function () {
-      await expect(initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.mul(2))).to.be.revertedWith(
+      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(2))
+      await expect(initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.mul(2), RATE)).to.be.revertedWith(
         'InitialCoinOffering: you cannot sell more than the total supply.'
       )
     })
 
     it('should revert if the owner did not allowed his funds to the smart contract', async function () {
-      await expect(initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4))).to.be.revertedWith(
+      await expect(initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)).to.be.revertedWith(
         'InitialCoinOffering: you have not allowed the funds yet.'
       )
     })
 
     it('should revert if the sale is already started', async function () {
       await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(2))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4))
-      await expect(initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4))).to.be.revertedWith(
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)
+      await expect(initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)).to.be.revertedWith(
         'InitialCoinOffering: the sale is already launched.'
       )
     })
   })
 
   // buyToken()
-  describe('buyToken', function () {
+  describe('buyToken() - verification', function () {
     let transaction
     beforeEach(async function () {
-      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4))
-      transaction = await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })
+      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(2))
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(2), RATE)
+      transaction = await initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })
     })
 
     it('should decrease the supply in sale', async function () {
-      expect(await initialCoinOffering.supplyInSale()).to.equal(TOTAL_SUPPLY.div(8))
+      expect(await initialCoinOffering.supplyInSale()).to.equal(TOTAL_SUPPLY.div(2).sub(ONE_ETHER.div(10).mul(RATE)))
     })
 
     it('should increase the total supply sold', async function () {
-      expect(await initialCoinOffering.supplySold()).to.equal(TOTAL_SUPPLY.div(8))
+      expect(await initialCoinOffering.supplySold()).to.equal(ONE_ETHER.div(10).mul(RATE))
     })
 
     it('should update the token balance of buyer', async function () {
-      expect(await initialCoinOffering.tokenBalanceOf(buyerA.address)).to.equal(TOTAL_SUPPLY.div(8))
+      expect(await initialCoinOffering.tokenBalanceOf(buyerA.address)).to.equal(ONE_ETHER.div(10).mul(RATE))
     })
 
     it('sould increase the ether balance of the contract', async function () {
-      expect(await initialCoinOffering.contractBalance()).to.equal(TOTAL_SUPPLY.div(8))
+      expect(await initialCoinOffering.contractBalance()).to.equal(ONE_ETHER.div(10))
     })
 
-    it('should increase the balance of the contract [ERC20 transferFrom]', async function () {
-      expect(await superbtoken.balanceOf(initialCoinOffering.address)).to.equal(TOTAL_SUPPLY.div(8))
+    it('should increase the token balance of the contract [ERC20 transferFrom]', async function () {
+      expect(await superbtoken.balanceOf(initialCoinOffering.address)).to.equal(ONE_ETHER.div(10).mul(RATE))
     })
 
     it('should decrease the token balance of the owner [ERC20 transferFrom]', async function () {
-      expect(await superbtoken.balanceOf(owner.address)).to.equal(TOTAL_SUPPLY.sub(TOTAL_SUPPLY.div(8)))
+      expect(await superbtoken.balanceOf(owner.address)).to.equal(TOTAL_SUPPLY.sub(ONE_ETHER.div(10).mul(RATE)))
     })
 
     it('should emit a Transfer event [ERC20 Transfer event]', async function () {
       // bonne pratique ?
       expect(transaction)
         .to.emit(superbtoken, 'Transfer')
-        .withArgs(owner.address, initialCoinOffering.address, TOTAL_SUPPLY.div(8))
+        .withArgs(owner.address, initialCoinOffering.address, ONE_ETHER.div(10).mul(RATE))
     })
 
     it('should emit TokenBought event', async function () {
       expect(transaction)
         .to.emit(initialCoinOffering, 'TokenBought')
-        .withArgs(buyerA.address, TOTAL_SUPPLY.div(8), TOTAL_SUPPLY.div(8))
+        .withArgs(buyerA.address, ONE_ETHER.div(10).mul(RATE), ONE_ETHER.div(10).mul(RATE))
     })
   })
 
   // buyToken() - Misuse & Edge Case
-  describe('Misuse of buyToken', function () {
+  describe('buyToken() - misuse & edge cases', function () {
     it('should revert if the sale is not started yet (modifier)', async function () {
-      await expect(initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })).to.be.revertedWith(
+      await expect(initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })).to.be.revertedWith(
         'InitialCoinOffering: the sale is not started yet.'
       )
     })
 
     it('should revert if the sale period is over (modifier)', async function () {
-      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4))
+      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY)
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(2), RATE)
       await ethers.provider.send('evm_increaseTime', [1210000]) // one week = 604800 second
       await ethers.provider.send('evm_mine')
-      await expect(initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })).to.be.revertedWith(
+      await expect(initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })).to.be.revertedWith(
         'InitialCoinOffering: The sale is over.'
       )
     })
 
     it('should revert if the supply in sale is equal to zero', async function () {
       await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4))
-      await initialCoinOffering.connect(buyerB).buyToken({ value: TOTAL_SUPPLY.div(4) })
-      await expect(initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })).to.be.revertedWith(
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)
+      await initialCoinOffering.connect(buyerB).buyToken({ value: TOTAL_SUPPLY })
+      await expect(initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })).to.be.revertedWith(
         'InitialCoinOffering: there is no more token in sale.'
       )
     })
 
     it('[EDGE CASE] should refund the buyer if insufficient supply in sale', async function () {
-      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(8))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(8))
-      let transaction = await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(4) })
-      expect(transaction).changeEtherBalance(buyerA, TOTAL_SUPPLY.div(8).sub(TOTAL_SUPPLY.div(4)))
+      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)
+      let transaction = await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(2).div(RATE) })
+      expect(transaction).changeEtherBalance(buyerA, TOTAL_SUPPLY.div(4).div(RATE).sub(TOTAL_SUPPLY.div(2).div(RATE)))
       expect(await initialCoinOffering.supplyInSale()).to.equal(0)
     })
   })
@@ -170,9 +179,9 @@ describe('InitialCoinOffering', function () {
   describe('Claim tokens', function () {
     let claimTokenCall
     beforeEach(async function () {
-      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(8))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(8))
-      await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })
+      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)
+      await initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })
       await ethers.provider.send('evm_increaseTime', [1210000]) // one week = 604800 second
       await ethers.provider.send('evm_mine')
       claimTokenCall = await initialCoinOffering.connect(buyerA).claimToken()
@@ -183,7 +192,7 @@ describe('InitialCoinOffering', function () {
     })
 
     it('should increase the buyer token balance [ERC20 transfer]', async function () {
-      expect(await superbtoken.balanceOf(buyerA.address)).to.equal(TOTAL_SUPPLY.div(8))
+      expect(await superbtoken.balanceOf(buyerA.address)).to.equal(ONE_ETHER.div(10).mul(RATE))
     })
 
     it('should decrease the token balance of the contract [ERC20 transfer]', async function () {
@@ -194,22 +203,24 @@ describe('InitialCoinOffering', function () {
       // bonne pratique de se servir des event de ERC20 pour tester un transfer ??
       expect(claimTokenCall)
         .to.emit(superbtoken, 'Transfer')
-        .withArgs(initialCoinOffering.address, buyerA.address, TOTAL_SUPPLY.div(8))
+        .withArgs(initialCoinOffering.address, buyerA.address, ONE_ETHER.div(10).mul(RATE))
       // ou bien du matcher changeTokenBalance (ne marche pas)
       //expect(claimTokenCall).to.changeTokenBalance(superbtoken, buyerA, TOTAL_SUPPLY.div(8))
     })
 
     it('should emit a TokenClaimed event', async function () {
-      expect(claimTokenCall).to.emit(initialCoinOffering, 'TokenClaimed').withArgs(buyerA.address, TOTAL_SUPPLY.div(8))
+      expect(claimTokenCall)
+        .to.emit(initialCoinOffering, 'TokenClaimed')
+        .withArgs(buyerA.address, ONE_ETHER.div(10).mul(RATE))
     })
   })
 
   // claimToken() - Misuse
   describe('Misuse of claimToken', function () {
     beforeEach(async function () {
-      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(8))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(8))
-      await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })
+      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)
+      await initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })
     })
 
     it('should revert if the sale period is not over', async function () {
@@ -232,9 +243,9 @@ describe('InitialCoinOffering', function () {
     let withdrawCall
     beforeEach(async function () {
       await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(2))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(2))
-      await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })
-      await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(4) })
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(2), RATE)
+      await initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })
+      await initialCoinOffering.connect(buyerB).buyToken({ value: ONE_ETHER.div(20) })
       await ethers.provider.send('evm_increaseTime', [1210000]) // one week = 604800 second
       await ethers.provider.send('evm_mine')
       withdrawCall = await initialCoinOffering.connect(owner).withdrawSaleProfit()
@@ -248,7 +259,7 @@ describe('InitialCoinOffering', function () {
     })
 
     it('should increase ether balance of owner', async function () {
-      expect(withdrawCall).to.changeEtherBalance(owner, TOTAL_SUPPLY.div(8).mul(3))
+      expect(withdrawCall).to.changeEtherBalance(owner, ONE_ETHER.div(20).mul(3))
     })
   })
 
@@ -256,11 +267,11 @@ describe('InitialCoinOffering', function () {
   describe('Misuse of withdraw sale profit', function () {
     beforeEach(async function () {
       await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(2))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(2))
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(2), RATE)
     })
 
     it('should revert if the caller is not the owner (Ownable)', async function () {
-      await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })
+      await initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })
       await ethers.provider.send('evm_increaseTime', [1210000]) // one week = 604800 second
       await ethers.provider.send('evm_mine')
       await expect(initialCoinOffering.connect(buyerB).withdrawSaleProfit()).to.be.revertedWith(
@@ -269,7 +280,7 @@ describe('InitialCoinOffering', function () {
     })
 
     it('should revert if the sale is not over', async function () {
-      await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })
+      await initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })
       await expect(initialCoinOffering.connect(owner).withdrawSaleProfit()).to.be.revertedWith(
         'InitialCoinOffering: you cannot withdraw ether before the sale ends.'
       )
@@ -289,8 +300,8 @@ describe('InitialCoinOffering', function () {
     beforeEach(async function () {
       // Owner set the sale => BuyerA get tokens => Owner send all his token funds elsewhere
       await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4))
-      await initialCoinOffering.connect(buyerA).buyToken({ value: TOTAL_SUPPLY.div(8) })
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)
+      await initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })
       ownerBalance = await superbtoken.balanceOf(owner.address)
       await superbtoken.connect(owner).transfer(dev.address, ownerBalance)
     })
@@ -299,11 +310,11 @@ describe('InitialCoinOffering', function () {
       await ethers.provider.send('evm_increaseTime', [1210000]) // one week = 604800 second
       await ethers.provider.send('evm_mine')
       await initialCoinOffering.connect(buyerA).claimToken()
-      expect(await superbtoken.balanceOf(buyerA.address)).to.equal(TOTAL_SUPPLY.div(8))
+      expect(await superbtoken.balanceOf(buyerA.address)).to.equal(ONE_ETHER.div(10).mul(RATE))
     })
 
     it('should revert if the buyer attempt to buy token (ERC20 - transferFrom)', async function () {
-      await expect(initialCoinOffering.connect(buyerB).buyToken({ value: TOTAL_SUPPLY.div(16) })).to.be.revertedWith(
+      await expect(initialCoinOffering.connect(buyerB).buyToken({ value: ONE_ETHER.div(10) })).to.be.revertedWith(
         'ERC20: transfer amount exceeds balance'
       )
     })
@@ -311,11 +322,13 @@ describe('InitialCoinOffering', function () {
 
   describe('Owner cannot start another sale period', function () {
     it('should revert if the owner attempt to start the sale twice', async function () {
-      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4))
+      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(2))
+      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)
       await ethers.provider.send('evm_increaseTime', [1210000]) // one week = 604800 second
       await ethers.provider.send('evm_mine')
-      await expect(initialCoinOffering.connect(owner).startSalePeriod()).to.be.reverted
+      await expect(initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), RATE)).to.be.revertedWith(
+        'InitialCoinOffering: the sale is already launched.'
+      )
     })
   })
 })
