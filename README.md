@@ -26,7 +26,7 @@ contract SuperbToken is ERC20 {
 }
 ```
 
-Le détenteur de la totalité de la supply est désigner lors du déploiment du contract ERC20.
+Le détenteur de la supply totale est désigné lors du déploiment du contract ERC20.
 
 ## Test du contrat ERC20
 
@@ -60,14 +60,14 @@ describe("SuperbToken", function () {
 });
 ```
 
-**Test n°1 :** on se sert de l'event `Transfer` emit par le contrat ERC20.  
-**Test n°2 :** on regarde si la totalité de la supply est bien à l'adresse mise dans le constructor.
+**Test n°1 :** on se sert de l'event `Transfer` emit par le contrat ERC20 pour voir si la fonction `_mint()` a marchée (ce test n'est pas nécéssaire)  
+**Test n°2 :** on regarde si la supply totale est bien à l'adresse mise dans le constructor.
 
 ## Création du contract ICO
 
 ### Imports et héritages
 
-Le contrat ICO à besoin d'autres contrats pour gérer la ventes des tokens :
+Le contrat ICO à besoin d'autres contrats pour gérer la vente des tokens :
 
 ```js
 // SPDX-License-Identifier: MIT
@@ -104,6 +104,7 @@ function startSalePeriod(...) public onlyOwner {
 }
 ```
 
+On se sert du `modifier` onlyOwner et du `getter` owner()
 **Modification de types :**
 
 ```js
@@ -115,7 +116,7 @@ contract InitialCoinOffering is Ownable {
 }
 ```
 
-Ici on modifie le type `address payable`, on lui ajoute des fonctions / méthodes notamment `.sendValue()` :
+Ici on modifie le type `address payable`, on lui ajoute des fonctions / méthodes supplémentaires, notamment `.sendValue()` :
 
 ```js
 function withdrawSaleProfit() public onlyOwner {
