@@ -108,7 +108,7 @@ describe('Calculette', function () {
       await calculette.connect(buyerA).buyCredits(10) // RATE = 2, must have 20 credits
     })
 
-    it('should decrease the credits balances of the buyer', async function () {
+    it('should decrease the credits balances of the buyer (modifier)', async function () {
       await calculette.connect(buyerA).add(2, 5)
       await calculette.connect(buyerA).sub(2, 5)
       await calculette.connect(buyerA).mul(2, 5)
@@ -142,7 +142,33 @@ describe('Calculette', function () {
         .to.emit(calculette, 'Div')
         .withArgs(1, 4, 4)
     })
-  })
 
-  describe('modifier payCredit')
+    it('should revert if div() is called with a zero at 2nd parameter', async function () {
+      await expect(calculette.connect(buyerA).div(4, 0)).to.be.revertedWith('Calculette: you cannot divide by zero.')
+    })
+
+    it('should revert if the credits balance is at zero', async function () {
+      await calculette.connect(buyerA).add(2, 5)
+      await calculette.connect(buyerA).sub(2, 5)
+      await calculette.connect(buyerA).mul(2, 5)
+      await calculette.connect(buyerA).mod(2, 5)
+      await calculette.connect(buyerA).div(2, 5)
+      await calculette.connect(buyerA).add(2, 5)
+      await calculette.connect(buyerA).sub(2, 5)
+      await calculette.connect(buyerA).mul(2, 5)
+      await calculette.connect(buyerA).mod(2, 5)
+      await calculette.connect(buyerA).div(2, 5)
+      await calculette.connect(buyerA).add(2, 5)
+      await calculette.connect(buyerA).sub(2, 5)
+      await calculette.connect(buyerA).mul(2, 5)
+      await calculette.connect(buyerA).mod(2, 5)
+      await calculette.connect(buyerA).div(2, 5)
+      await calculette.connect(buyerA).add(2, 5)
+      await calculette.connect(buyerA).sub(2, 5)
+      await calculette.connect(buyerA).mul(2, 5)
+      await calculette.connect(buyerA).mod(2, 5)
+      await calculette.connect(buyerA).div(2, 5)
+      await expect(calculette.connect(buyerA).add(2, 4)).to.be.revertedWith('Calculette: you have no more credits.')
+    })
+  })
 })

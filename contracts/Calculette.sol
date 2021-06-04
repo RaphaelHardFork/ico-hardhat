@@ -16,7 +16,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  * By spending tokens in this contracts you receive credits to do operations,
  * the rate of credits for 1 token is fixed at the deployment of the smart contract.
  * */
-
 contract Calculette is Ownable {
     using Address for address payable;
 
