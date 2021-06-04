@@ -3,29 +3,14 @@ const { expect } = require('chai')
 describe('Calculette', function () {
   const TOTAL_SUPPLY = ethers.utils.parseEther('1000')
   const ONE_ETHER = ethers.utils.parseEther('1')
-  const ZERO_ADDRESS = ethers.constants.AddressZero
   const RATE = 2
-  let SuperbToken,
-    superbtoken,
-    InitialCoinOffering,
-    initialCoinOffering,
-    Calculette,
-    calculette,
-    dev,
-    owner,
-    buyerA,
-    buyerB
+  let SuperbToken, superbtoken, Calculette, calculette, dev, owner, buyerA, buyerB
   beforeEach(async function () {
     ;[dev, owner, buyerA, buyerB] = await ethers.getSigners()
     // ERC20 Deployment
     SuperbToken = await ethers.getContractFactory('SuperbToken')
     superbtoken = await SuperbToken.connect(dev).deploy(TOTAL_SUPPLY, owner.address)
     await superbtoken.deployed()
-
-    // ICO Deployment
-    InitialCoinOffering = await ethers.getContractFactory('InitialCoinOffering')
-    initialCoinOffering = await InitialCoinOffering.connect(dev).deploy(superbtoken.address, owner.address)
-    await initialCoinOffering.deployed()
 
     // Calculette Deployment
     Calculette = await ethers.getContractFactory('Calculette')
@@ -49,17 +34,10 @@ describe('Calculette', function () {
 
   describe('buyCredits() - verification', function () {
     let buyCreditCall
-    let buyersTokenBalance
     let ownerTokenBalance
     beforeEach(async function () {
-      // buyerA buy token during the ICO and use it in Calculette
-      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), 1000)
-      await initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })
-      await ethers.provider.send('evm_increaseTime', [1210000]) // one week = 604800 second
-      await ethers.provider.send('evm_mine')
-      await initialCoinOffering.connect(buyerA).claimToken()
-      buyersTokenBalance = await superbtoken.balanceOf(buyerA.address)
+      // buyerA receive token from the owner
+      await superbtoken.connect(owner).transfer(buyerA.address, 100)
       ownerTokenBalance = await superbtoken.balanceOf(owner.address)
       await superbtoken.connect(buyerA).approve(calculette.address, 100)
       buyCreditCall = await calculette.connect(buyerA).buyCredits(10) // RATE = 2, must have 20 credits
@@ -70,7 +48,7 @@ describe('Calculette', function () {
     })
 
     it('should decrease the token balance of the buyer', async function () {
-      expect(await superbtoken.balanceOf(buyerA.address)).to.equal(ONE_ETHER.div(10).mul(1000).sub(10))
+      expect(await superbtoken.balanceOf(buyerA.address)).to.equal(90)
     })
 
     it('should increase the token balance of the owner', async function () {
@@ -97,13 +75,8 @@ describe('Calculette', function () {
 
   describe('Utilisation of arithmetic functions', function () {
     beforeEach(async function () {
-      // buyerA buy token during the ICO and use it in Calculette
-      await superbtoken.connect(owner).approve(initialCoinOffering.address, TOTAL_SUPPLY.div(4))
-      await initialCoinOffering.connect(owner).startSalePeriod(TOTAL_SUPPLY.div(4), 1000)
-      await initialCoinOffering.connect(buyerA).buyToken({ value: ONE_ETHER.div(10) })
-      await ethers.provider.send('evm_increaseTime', [1210000]) // one week = 604800 second
-      await ethers.provider.send('evm_mine')
-      await initialCoinOffering.connect(buyerA).claimToken()
+      // buyerA receive token from the owner
+      await superbtoken.connect(owner).transfer(buyerA.address, 100)
       await superbtoken.connect(buyerA).approve(calculette.address, 100)
       await calculette.connect(buyerA).buyCredits(10) // RATE = 2, must have 20 credits
     })
@@ -148,27 +121,7 @@ describe('Calculette', function () {
     })
 
     it('should revert if the credits balance is at zero', async function () {
-      await calculette.connect(buyerA).add(2, 5)
-      await calculette.connect(buyerA).sub(2, 5)
-      await calculette.connect(buyerA).mul(2, 5)
-      await calculette.connect(buyerA).mod(2, 5)
-      await calculette.connect(buyerA).div(2, 5)
-      await calculette.connect(buyerA).add(2, 5)
-      await calculette.connect(buyerA).sub(2, 5)
-      await calculette.connect(buyerA).mul(2, 5)
-      await calculette.connect(buyerA).mod(2, 5)
-      await calculette.connect(buyerA).div(2, 5)
-      await calculette.connect(buyerA).add(2, 5)
-      await calculette.connect(buyerA).sub(2, 5)
-      await calculette.connect(buyerA).mul(2, 5)
-      await calculette.connect(buyerA).mod(2, 5)
-      await calculette.connect(buyerA).div(2, 5)
-      await calculette.connect(buyerA).add(2, 5)
-      await calculette.connect(buyerA).sub(2, 5)
-      await calculette.connect(buyerA).mul(2, 5)
-      await calculette.connect(buyerA).mod(2, 5)
-      await calculette.connect(buyerA).div(2, 5)
-      await expect(calculette.connect(buyerA).add(2, 4)).to.be.revertedWith('Calculette: you have no more credits.')
+      await expect(calculette.connect(buyerB).add(2, 4)).to.be.revertedWith('Calculette: you have no more credits.')
     })
   })
 })

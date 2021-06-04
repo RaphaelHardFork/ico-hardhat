@@ -20,8 +20,4 @@ describe('SuperbToken', function () {
   it('should transfer the total supply to owner', async function () {
     expect(await superbtoken.balanceOf(owner.address)).to.equal(TOTAL_SUPPLY)
   })
-
-  it('should set the owner', async function () {
-    expect(await superbtoken.owner()).to.equal(owner.address)
-  })
 })
