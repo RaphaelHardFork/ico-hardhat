@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
 /**
- * @title InitialCoinOffering
+ * @title Contract details
  * @author Raphael
  * @notice This contract is deployed with an ERC20 contract in order to set up a sale,
  * the sale last 2 weeks since the owner call the function startSalePeriod(). The ICO is unique,
@@ -25,12 +25,29 @@ contract InitialCoinOffering is Ownable {
     mapping(address => uint256) private _tokenBalances;
     uint256 private _startTimeEpoch;
 
+    /**
+     * @param owner address of the owner
+     * @param icoContract address of the ERC20 token contract
+     * @param supplyInSale amount of token to put in sale
+     * @param rate amount of token for one ether
+     * */
     event SaleStarted(address indexed owner, address indexed icoContract, uint256 supplyInSale, uint256 rate);
+
+    /**
+     * @param buyer address who bought tokens
+     * @param amount amount of token bought
+     * @param totalSupplyBought total amount bought so far
+     * */
     event TokenBought(address indexed buyer, uint256 amount, uint256 totalSupplyBought);
+
+    /**
+     * @param buyer address who claims tokens
+     * @param amount amount of tokens claimed
+     * */
     event TokenClaimed(address indexed buyer, uint256 amount);
 
     /**
-     * @notice The constructor set the ERC20 contract address and the owner (Ownable.sol) of the ICO
+     * @dev The constructor set the ERC20 contract address and the owner (Ownable.sol) of the ICO
      * @param superbTokenAddress is the deployed contract address of the ERC20 token
      * @param owner_ is the owner of the ICO contract, set via the Ownable contract
      * */
@@ -132,46 +149,50 @@ contract InitialCoinOffering is Ownable {
     }
 
     /**
-     * @notice this getter is use to verify the ERC20 contract address.
+     * @return The address of the ERC20 contract
      * */
     function tokenContract() public view returns (address) {
         return address(_token);
     }
 
+    /**
+     * @return the number of token for 1 ether
+     * */
     function rate() public view returns (uint256) {
         return _rate;
     }
 
     /**
-     * @notice this getter display the supply amount available for the sale.
+     * @return The total amount of token minted at the deployment
      * */
     function supplyInSale() public view returns (uint256) {
         return _supplyInSale;
     }
 
     /**
-     * @notice this getter display the supply solded during the sale (used in the Dapp).
+     * @return The amount of token selled so far
      * */
     function supplySold() public view returns (uint256) {
         return _supplySold;
     }
 
     /**
-     * @notice this getter allow buyer to check the amount of token they bought.
+     * @param account address checked for token balance
+     * @return the amount of tokens locked in the contract for the specified address
      * */
     function tokenBalanceOf(address account) public view returns (uint256) {
         return _tokenBalances[account];
     }
 
     /**
-     * @notice this getter is used to know the ether balance of the ICO contract.
+     * @return the amount of ethers locked in the contract
      * */
     function contractBalance() public view returns (uint256) {
         return address(this).balance;
     }
 
     /**
-     * @notice this getter display time before the sale end, if it returns zero, it means the sale have not started yet.
+     * @return the time before the sale end: 0 means the sale have not started yet or the sale is over
      * */
     function timeBeforeSaleEnd() public view returns (uint256) {
         if (_startTimeEpoch == 0) {
