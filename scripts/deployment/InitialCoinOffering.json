@@ -1,0 +1,8 @@
+{
+  "InitialCoinOffering": {
+    "rinkeby": {
+      "contractAddress": "0x3B0C294A145e348607a02AB88192bB8DA6b81ef8",
+      "contractDeployerAddress": "0x9086701Ecc7eFe724fC906DDF5Bf7D481FA3B055"
+    }
+  }
+}

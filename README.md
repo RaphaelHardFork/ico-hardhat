@@ -458,3 +458,9 @@ await ethers.provider.send("evm_mine");
 
 **[1] :** On regarde la balance du smart contract, pour cela nous avons du créer un `getter` dans le smart contract de l'ICO.  
 **[2] :** On regarde si la balance de l'owner augmente. Pour regarder simplement si la balance en ether augmente ou diminue on peut utiliser la méthode `.changeEtherBalance()`
+
+## Déploiment des contracts via Hardhat
+
+Création d'un compte sur [Infura](https://infura.io/)
+https://ropsten.infura.io/v3/API_KEY (endpoint de l'API)
+(ID du projet)

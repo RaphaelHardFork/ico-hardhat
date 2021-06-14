@@ -1,0 +1,8 @@
+{
+  "Calculette": {
+    "rinkeby": {
+      "contractAddress": "0x9455e7753d790325446A84Bf845A2be3b65c07a2",
+      "contractDeployerAddress": "0x9086701Ecc7eFe724fC906DDF5Bf7D481FA3B055"
+    }
+  }
+}
