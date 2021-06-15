@@ -1,7 +1,6 @@
 const { ethers } = require('hardhat')
 const hre = require('hardhat')
-const fs = require('fs')
-
+const deployed = require('./deployed')
 const CONTRACT_NAME = 'Calculette'
 const TOKEN_CONTRACT_ADDRESS = '0xd4d0c0Db36f5F650e664c6351383D567D00Dc85B'
 
@@ -14,15 +13,7 @@ const main = async () => {
 
   await calculette.deployed()
 
-  const deploymentInfo = {
-    Calculette: {
-      rinkeby: {
-        contractAddress: `${calculette.address}`,
-        contractDeployerAddress: `${deployer.address}`,
-      },
-    },
-  }
-  fs.writeFileSync('./scripts/deployment/SuperbToken-deployment.json', JSON.stringify(deploymentInfo))
+  deployed(CONTRACT_NAME, hre.network.name, calculette.address)
 
   console.log('Calculette deployed at : ' + calculette.address)
 }

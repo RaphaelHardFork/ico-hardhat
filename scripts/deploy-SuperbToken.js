@@ -1,6 +1,6 @@
 const { ethers } = require('hardhat')
 const hre = require('hardhat')
-const fs = require('fs')
+const deployed = require('./deployed')
 
 const TOTAL_SUPPLY = ethers.utils.parseEther('1001')
 const CONTRACT_NAME = 'SuperbToken'
@@ -14,15 +14,7 @@ const main = async () => {
 
   await superbtoken.deployed()
 
-  const deploymentInfo = {
-    SuperbToken: {
-      rinkeby: {
-        contractAddress: `${superbtoken.address}`,
-        contractDeployerAddress: `${deployer.address}`,
-      },
-    },
-  }
-  fs.writeFileSync('./artifacts/contract/SuperbToken-deployment.json', JSON.stringify(deploymentInfo))
+  deployed(CONTRACT_NAME, hre.network.name, superbtoken.address)
 
   console.log('SuperbToken deployed at : ' + superbtoken.address)
 }
